@@ -1,22 +1,22 @@
 import Phaser from 'phaser';
-import { BALL_RADIUS, destroyBrick, initialState, loseLife, makeBricks, makeObstacles, nextLevel, PADDLE_WIDTH, paddleVelocity, WIDTH, type GameControls, type GameState } from './model';
+import { BALL_RADIUS, destroyBrick, initialState, loseLife, makeBricks, makeObstacles, nextLevel, PADDLE_WIDTH, WIDTH, type GameControls, type GameSnapshot } from './model';
 import { arenaLayout, TouchDrag } from './controls';
+import { BallField } from './BallField';
 
 type Options = {
   sound: boolean;
-  onState: (state: GameState) => void;
+  onState: (state: GameSnapshot) => void;
   onReady: (controls: GameControls) => void;
 };
 
 class BreakoutScene extends Phaser.Scene {
   private state = initialState();
-  private ball!: Phaser.Physics.Arcade.Image;
+  private balls!: BallField;
+  private powerups!: Phaser.Physics.Arcade.Group;
   private paddle!: Phaser.Physics.Arcade.Image;
   private bricks!: Phaser.Physics.Arcade.StaticGroup;
   private obstacles!: Phaser.Physics.Arcade.StaticGroup;
   private particles!: Phaser.GameObjects.Particles.ParticleEmitter;
-  private trail!: Phaser.GameObjects.Graphics;
-  private points: { x: number; y: number }[] = [];
   private keys = new Set<string>();
   private audio: AudioContext | null = null;
   private soundEnabled: boolean;
@@ -41,18 +41,20 @@ class BreakoutScene extends Phaser.Scene {
     this.background = this.add.graphics();
     this.drawBackground();
     this.shadow = this.add.ellipse(WIDTH / 2, this.arena.paddleY + 22, PADDLE_WIDTH + 15, 8, 0x0a1b17, 0.15);
-    this.trail = this.add.graphics();
+    this.balls = new BallField(this);
     this.particles = this.add.particles(0, 0, 'particle', {
       emitting: false, lifespan: 650, speed: { min: 35, max: 150 }, gravityY: 220,
       scale: { start: 1, end: 0 }, alpha: { start: 0.9, end: 0 }, maxParticles: 240,
     });
     this.bricks = this.physics.add.staticGroup();
     this.obstacles = this.physics.add.staticGroup();
+    this.powerups = this.physics.add.group({ allowGravity: false });
     this.paddle = this.physics.add.staticImage(WIDTH / 2, this.arena.paddleY, 'paddle');
-    this.ball = this.physics.add.image(WIDTH / 2, this.arena.paddleY - 17, 'ball').setCircle(BALL_RADIUS).setBounce(1).setCollideWorldBounds(true);
-    this.physics.add.collider(this.ball, this.bricks, (_ball, object) => this.hitBrick(object as Phaser.Physics.Arcade.Image));
-    this.physics.add.collider(this.ball, this.obstacles, (_ball, object) => this.hitObstacle(object as Phaser.Physics.Arcade.Image));
-    this.physics.add.collider(this.ball, this.paddle, () => this.hitPaddle(), () => this.state.status === 'playing' && this.ballBody.velocity.y > 0);
+    this.physics.add.collider(this.balls.group, this.bricks, (_ball, object) => this.hitBrick(object as Phaser.Physics.Arcade.Image));
+    this.physics.add.collider(this.balls.group, this.obstacles, (_ball, object) => this.hitObstacle(object as Phaser.Physics.Arcade.Image));
+    // Arcade passes the individual sprite first and the group member second.
+    this.physics.add.collider(this.paddle, this.balls.group, (_paddle, ball) => this.hitPaddle(ball as Phaser.Physics.Arcade.Image), (_paddle, ball) => this.state.status === 'playing' && ((ball as Phaser.Physics.Arcade.Image).body as Phaser.Physics.Arcade.Body).velocity.y > 0);
+    this.physics.add.overlap(this.paddle, this.powerups, (_paddle, powerup) => this.collectPowerup(powerup as Phaser.Physics.Arcade.Image));
     this.setupLevel();
 
     const canvas = this.game.canvas;
@@ -113,8 +115,6 @@ class BreakoutScene extends Phaser.Scene {
     this.publish();
   }
 
-  private get ballBody() { return this.ball.body as Phaser.Physics.Arcade.Body; }
-
   private drawBackground() {
     this.background.clear().fillStyle(0xffffff, 0.05);
     for (let x = 24; x < WIDTH; x += 24) for (let y = 24; y < this.arena.height; y += 24) this.background.fillCircle(x, y, 0.9);
@@ -135,18 +135,20 @@ class BreakoutScene extends Phaser.Scene {
     // Keep the fixed obstacle region unchanged so resizing cannot place the ball inside a barrier.
     const oldPaddleY = this.arena.paddleY;
     const fixedRegionBottom = Math.max(300, ...makeObstacles(this.state.level).map(obstacle => obstacle.y + obstacle.height / 2 + BALL_RADIUS + 2));
-    const y = this.ball.y <= fixedRegionBottom ? this.ball.y : fixedRegionBottom + (this.ball.y - fixedRegionBottom) * (layout.paddleY - fixedRegionBottom) / (oldPaddleY - fixedRegionBottom);
-    const { x: vx, y: vy } = this.ballBody.velocity;
+    const mapY = (y: number) => y <= fixedRegionBottom ? y : fixedRegionBottom + (y - fixedRegionBottom) * (layout.paddleY - fixedRegionBottom) / (oldPaddleY - fixedRegionBottom);
     this.arena = layout;
     this.scale.setGameSize(WIDTH, layout.height);
     this.physics.world.setBounds(10, 10, WIDTH - 20, layout.height - 10, true, true, true, false);
     this.paddle.setY(layout.paddleY).refreshBody();
     this.shadow.setPosition(this.paddle.x, layout.paddleY + 22);
-    this.ballBody.reset(this.ball.x, this.state.status === 'ready' ? layout.paddleY - 17 : y);
-    this.ball.setVelocity(vx, vy);
+    this.balls.resize(y => this.state.status === 'ready' ? layout.paddleY - 17 : mapY(y));
+    for (const object of this.powerups.getChildren()) {
+      const powerup = object as Phaser.Physics.Arcade.Image;
+      if (!powerup.active) continue;
+      (powerup.body as Phaser.Physics.Arcade.Body).reset(powerup.x, mapY(powerup.y));
+      powerup.setVelocityY(this.dropSpeed(powerup.y));
+    }
     this.touchDrag.reset();
-    this.points = [];
-    this.trail.clear();
     this.drawBackground();
   }
 
@@ -168,6 +170,21 @@ class BreakoutScene extends Phaser.Scene {
     graphics.clear().fillStyle(0xffffff).fillRect(0, 0, 5, 5);
     graphics.generateTexture('particle', 5, 5);
     graphics.destroy();
+    for (const [key, width, height] of [['frenzy-brick', 66, 26], ['frenzy-drop', 46, 34]] as const) {
+      const texture = this.textures.createCanvas(key, width, height)!;
+      const context = texture.getContext();
+      context.fillStyle = '#f5b85b';
+      context.fillRect(0, 0, width, height);
+      context.strokeStyle = '#ffe5b0';
+      context.lineWidth = 2;
+      context.strokeRect(2, 2, width - 4, height - 4);
+      context.fillStyle = '#20372c';
+      context.font = `bold ${key === 'frenzy-drop' ? 23 : 20}px system-ui, sans-serif`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText('×2', width / 2, height / 2);
+      texture.refresh();
+    }
   }
 
   private setupLevel() {
@@ -176,8 +193,9 @@ class BreakoutScene extends Phaser.Scene {
     this.obstacles.clear(true, true);
     this.particles.killAll();
     for (const definition of makeBricks(this.state.level)) {
-      const brick = this.bricks.create(definition.x, definition.y, 'brick') as Phaser.Physics.Arcade.Image;
-      brick.setTint(definition.color).setData({ hp: definition.hp, color: definition.color });
+      const brick = this.bricks.create(definition.x, definition.y, definition.buff ? 'frenzy-brick' : 'brick') as Phaser.Physics.Arcade.Image;
+      if (!definition.buff) brick.setTint(definition.color);
+      brick.setData({ hp: definition.hp, color: definition.buff ? 0xf5b85b : definition.color, buff: definition.buff });
       if (definition.hp > 1) brick.setAlpha(0.65);
     }
     for (const definition of makeObstacles(this.state.level)) {
@@ -189,14 +207,12 @@ class BreakoutScene extends Phaser.Scene {
 
   private resetBall() {
     this.physics.pause();
+    this.powerups.clear(true, true);
     this.keys.clear();
     this.touchDrag.reset();
     this.paddle.setPosition(WIDTH / 2, this.arena.paddleY).refreshBody();
     this.shadow.setPosition(WIDTH / 2, this.arena.paddleY + 22);
-    this.ball.setVisible(true);
-    this.ballBody.reset(WIDTH / 2, this.arena.paddleY - 17);
-    this.points = [];
-    this.trail.clear();
+    this.balls.reset(WIDTH / 2, this.arena.paddleY - 17);
   }
 
   private movePaddle(x: number) {
@@ -204,7 +220,7 @@ class BreakoutScene extends Phaser.Scene {
     const position = Phaser.Math.Clamp(x, PADDLE_WIDTH / 2 + 12, WIDTH - PADDLE_WIDTH / 2 - 12);
     this.paddle.setX(position).refreshBody();
     this.shadow.setX(position);
-    if (this.state.status === 'ready') this.ballBody.reset(position, this.arena.paddleY - 17);
+    if (this.state.status === 'ready') this.balls.positionReady(position, this.arena.paddleY - 17);
   }
 
   private start() {
@@ -212,7 +228,7 @@ class BreakoutScene extends Phaser.Scene {
     this.unlockAudio();
     if (this.state.status === 'ready') {
       const speed = 350 + (this.state.level - 1) * 25;
-      this.ball.setVelocity(speed * 0.32, -speed * Math.sqrt(1 - 0.32 ** 2));
+      this.balls.launch(speed);
     }
     this.state.status = 'playing';
     this.physics.resume();
@@ -252,13 +268,20 @@ class BreakoutScene extends Phaser.Scene {
       brick.disableBody(true, true);
       if (!this.reducedMotion) this.particles.setParticleTint(Number(brick.getData('color'))).explode(10, brick.x, brick.y);
       this.state = destroyBrick(this.state);
+      if (brick.getData('buff') === 'frenzy' && this.state.status === 'playing') {
+        const drop = this.powerups.create(brick.x, brick.y, 'frenzy-drop') as Phaser.Physics.Arcade.Image;
+        drop.setVelocityY(this.dropSpeed(brick.y));
+      }
     } else {
       brick.setAlpha(1);
       this.tweens.add({ targets: brick, alpha: 0.4, duration: 65, yoyo: true });
     }
     this.playTone('brick');
     if (['level-complete', 'won'].includes(this.state.status)) {
-      this.physics.pause(); this.ball.setVisible(false); this.points = []; this.trail.clear(); this.playTone('clear');
+      this.physics.pause();
+      this.balls.hide();
+      this.powerups.getChildren().forEach(drop => (drop as Phaser.Physics.Arcade.Image).disableBody(true, true));
+      this.playTone('clear');
     }
     this.publish();
   }
@@ -273,46 +296,51 @@ class BreakoutScene extends Phaser.Scene {
     this.playTone('obstacle');
   }
 
-  private hitPaddle() {
-    const offset = (this.ball.x - this.paddle.x) / (PADDLE_WIDTH / 2);
-    const velocity = paddleVelocity(offset, this.ballBody.speed + 3);
-    this.ball.setVelocity(velocity.x, velocity.y);
+  private dropSpeed(y: number) {
+    return Math.max(150, (this.arena.paddleY - y) / 3.5);
+  }
+
+  private collectPowerup(powerup: Phaser.Physics.Arcade.Image) {
+    if (!powerup.active || this.state.status !== 'playing') return;
+    if (!this.balls.double(this.arena.height)) return;
+    powerup.disableBody(true, true);
+    this.playTone('frenzy');
+    this.publish();
+  }
+
+  private hitPaddle(ball: Phaser.Physics.Arcade.Image) {
+    const offset = (ball.x - this.paddle.x) / (PADDLE_WIDTH / 2);
+    this.balls.bounceOnPaddle(ball, offset);
     this.state.combo = 0;
     this.playTone('paddle');
     this.publish();
   }
 
   update(_time: number, delta: number) {
-    if (!this.ball) return;
+    if (!this.balls) return;
     const direction = (this.keys.has('ArrowRight') || this.keys.has('d') ? 1 : 0) - (this.keys.has('ArrowLeft') || this.keys.has('a') ? 1 : 0);
     if (direction) this.movePaddle(this.paddle.x + direction * 0.6 * Math.min(delta, 50));
     if (this.state.status !== 'playing') return;
     this.state.seconds += Math.min(delta, 50) / 1000;
     if (Math.floor(this.state.seconds) !== this.lastSecond) { this.lastSecond = Math.floor(this.state.seconds); this.publish(); }
-    if (this.ball.y > this.arena.height + BALL_RADIUS) {
+    const previousCount = this.balls.active.length;
+    this.balls.update(this.arena.height, this.reducedMotion);
+    for (const object of [...this.powerups.getChildren()]) {
+      const powerup = object as Phaser.Physics.Arcade.Image;
+      if (powerup.y > this.arena.height + 34) powerup.destroy();
+    }
+    if (!this.balls.active.length) {
       this.state = loseLife(this.state);
       this.resetBall();
-      if (this.state.status === 'lost') this.ball.setVisible(false);
+      if (this.state.status === 'lost') this.balls.clear();
       this.playTone('life');
       this.publish();
       return;
     }
-    // Keep rallies playable when Arcade Physics produces a near-horizontal bounce.
-    const velocity = this.ballBody.velocity;
-    const speed = velocity.length();
-    if (Math.abs(velocity.y) < speed * 0.22) {
-      const y = (velocity.y < 0 ? -1 : 1) * speed * 0.22;
-      this.ball.setVelocity(Math.sign(velocity.x || 1) * Math.sqrt(speed ** 2 - y ** 2), y);
-    }
-    if (!this.reducedMotion) {
-      this.points.unshift({ x: this.ball.x, y: this.ball.y });
-      this.points.length = Math.min(12, this.points.length);
-      this.trail.clear();
-      this.points.forEach((point, index) => this.trail.fillStyle(0xe1f3ac, (1 - index / 12) * 0.2).fillCircle(point.x, point.y, BALL_RADIUS * (1 - index / 14)));
-    }
+    if (previousCount !== this.balls.active.length) this.publish();
   }
 
-  private publish() { this.options.onState({ ...this.state, seconds: Math.floor(this.state.seconds) }); }
+  private publish() { this.options.onState({ ...this.state, seconds: Math.floor(this.state.seconds), ballCount: this.balls.active.length, frenzy: this.balls.multiplier > 1 }); }
 
   private unlockAudio() {
     if (!this.soundEnabled) return;
@@ -322,13 +350,13 @@ class BreakoutScene extends Phaser.Scene {
     } catch { /* Sound is optional. */ }
   }
 
-  private playTone(event: 'brick' | 'paddle' | 'clear' | 'life' | 'obstacle') {
+  private playTone(event: 'brick' | 'paddle' | 'clear' | 'life' | 'obstacle' | 'frenzy') {
     const context = this.audio;
     if (!this.soundEnabled || !context || context.state !== 'running') return;
     const oscillator = context.createOscillator();
     const gain = context.createGain();
-    const frequency = event === 'brick' ? 390 + Math.min(this.state.combo, 12) * 42 : event === 'paddle' ? 240 : event === 'clear' ? 880 : event === 'obstacle' ? 180 : 130;
-    const duration = event === 'clear' ? 0.3 : event === 'life' ? 0.2 : 0.065;
+    const frequency = event === 'brick' ? 390 + Math.min(this.state.combo, 12) * 42 : event === 'paddle' ? 240 : event === 'clear' ? 880 : event === 'obstacle' ? 180 : event === 'frenzy' ? 660 : 130;
+    const duration = event === 'clear' || event === 'frenzy' ? 0.3 : event === 'life' ? 0.2 : 0.065;
     oscillator.type = event === 'obstacle' ? 'triangle' : 'sine';
     oscillator.frequency.setValueAtTime(frequency, context.currentTime);
     oscillator.frequency.exponentialRampToValueAtTime(event === 'life' ? 65 : frequency * 1.15, context.currentTime + duration);

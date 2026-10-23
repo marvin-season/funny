@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BEST_KEY, initialState, readBest, readSound, SOUND_KEY, type GameControls } from './model';
+import { BEST_KEY, initialState, readBest, readSound, SOUND_KEY, type GameControls, type GameSnapshot } from './model';
 
 export function useBreakout() {
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<GameControls | null>(null);
-  const [hud, setHud] = useState(initialState);
+  const [hud, setHud] = useState<GameSnapshot>(() => ({ ...initialState(), ballCount: 1, frenzy: false }));
   const [best, setBest] = useState(readBest);
   const bestRef = useRef(best);
   const [sound, setSound] = useState(readSound);

@@ -8,7 +8,7 @@ export const BEST_KEY = 'moment:breakout:best:v1';
 export const SOUND_KEY = 'moment:breakout:sound:v1';
 
 export type Status = 'ready' | 'playing' | 'paused' | 'level-complete' | 'won' | 'lost';
-export type Brick = { x: number; y: number; hp: number; color: number };
+export type Brick = { x: number; y: number; hp: number; color: number; buff?: 'frenzy' };
 export type Obstacle = { x: number; y: number; width: number; height: number };
 export type GameState = {
   status: Status;
@@ -22,6 +22,7 @@ export type GameState = {
   total: number;
 };
 export type GameControls = { start: () => void; pause: () => void; restart: () => void; next: () => void; setSound: (enabled: boolean) => void };
+export type GameSnapshot = GameState & { ballCount: number; frenzy: boolean };
 
 const colors = [0xd4ed8a, 0xadcbb0, 0xe8cb99, 0xa9c6d0, 0xc7b8da];
 
@@ -36,6 +37,10 @@ export function makeBricks(level: number): Brick[] {
       bricks.push({ x: 68 + col * 73, y: 98 + row * 35, hp: level >= 3 && (row + col) % 5 === 0 ? 2 : 1, color: colors[row % colors.length] });
     }
   }
+  // One marked brick per level, low in the formation so the first pickup is reachable early.
+  const lowestRow = Math.max(...bricks.map(brick => brick.y));
+  const special = bricks.filter(brick => brick.y === lowestRow).sort((a, b) => Math.abs(a.x - WIDTH / 2) - Math.abs(b.x - WIDTH / 2))[0];
+  special.buff = 'frenzy';
   return bricks;
 }
 
