@@ -1,0 +1,36 @@
+# 片刻 · 小游戏
+
+React + TypeScript + Tailwind CSS + Phaser 3，使用 Vite 构建。
+
+## 本地开发
+
+```sh
+pnpm install
+pnpm dev
+```
+
+- 首页：`/`
+- 打砖块：`/games/breakout`
+
+## 打砖块
+
+- 鼠标移动、手指滑动，或者方向键 / A、D 控制挡板。
+- 点击游戏区或按空格发射小球；空格暂停 / 继续，Esc 暂停。
+- 5 个关卡，3 次生命，连续击碎获得加分；通过一关恢复一颗生命，最多三颗。
+- 第三关起有需要两次命中的半透明砖块。
+- 最高分和音效偏好保存到当前浏览器，本局进度不会在刷新后恢复。
+- 切换窗口自动暂停，返回后手动继续。
+
+React 负责页面与控制面板，Phaser Arcade Physics 负责碰撞，Phaser 的粒子和 Tween 负责反馈。所有纹理由几何图形生成，音效由 Web Audio 合成，无外部图片、字体或音频请求。Phaser 在进入游戏时才加载。
+
+## 检查与构建
+
+```sh
+pnpm test
+pnpm build
+pnpm preview
+```
+
+部署 `dist/` 时需要配置 SPA 回退，将 `/games/*` 等页面路径回退到 `index.html`，以便直接访问或刷新游戏页面。
+
+游戏放在 `src/games/` 下，后续可以添加独立模块和首页入口。

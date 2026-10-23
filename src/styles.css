@@ -1,0 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --color-paper: #f7f8f2;
+  --color-ink: #263d2c;
+  --color-muted: #788171;
+  --color-line: #e2e6da;
+  --color-lime: #d4ed8a;
+  --color-forest: #36543c;
+}
+
+@layer base {
+  body { @apply m-0 min-w-80 bg-paper font-sans text-ink antialiased; }
+  button, a, select { -webkit-tap-highlight-color: transparent; }
+  button, select { @apply cursor-pointer; }
+  button:disabled { @apply cursor-not-allowed; }
+  button:focus-visible, a:focus-visible, select:focus-visible { @apply outline-2 outline-offset-4 outline-forest; }
+  ::selection { @apply bg-lime text-ink; }
+}
