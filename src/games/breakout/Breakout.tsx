@@ -45,7 +45,7 @@ export default function Breakout() {
       {!game.ready && <div role="status" className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[#20372c] px-6 text-center text-sm text-lime">{game.loadError ? <><p>游戏没能加载，请刷新后再试。</p><button onClick={() => window.location.reload()} className="min-h-11 rounded-full border border-lime/40 px-5 py-2">重新加载</button></> : <><span className="size-7 rounded-full border-2 border-lime/20 border-t-lime motion-safe:animate-spin" /> 正在准备砖块…</>}</div>}
       {game.ready && hud.status === 'ready' && <div className="pointer-events-none absolute inset-x-4 top-[43%] flex flex-col items-center text-center">
         <p className="text-lg font-medium">{hud.lives < 3 ? '没关系，再接一球' : '准备好了吗？'}</p>
-        <p className="mt-2 text-xs text-[#a4b99d]">手指左右滑动，控制底部挡板</p>
+        <p className="mt-2 text-xs text-[#a4b99d]">{hud.level >= 2 ? '灰色挡板不可击碎，试试从侧面绕过' : '手指左右滑动，控制底部挡板'}</p>
         <button onClick={game.start} className="pointer-events-auto mt-5 inline-flex min-h-12 items-center gap-2 rounded-full bg-lime px-7 py-3 text-sm font-semibold text-ink hover:bg-[#e0f4a8]"><Play size={16} fill="currentColor" /> 开始游戏</button>
       </div>}
       {game.ready && hud.status === 'paused' && !confirmRestart && <div className="absolute inset-0 grid place-items-center overflow-y-auto bg-[#15291f]/95 px-5 py-4 text-center"><div>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BALL_RADIUS, destroyBrick, formatTime, initialState, LEVEL_COUNT, loseLife, makeBricks, nextLevel, PADDLE_Y, paddleVelocity, WIDTH, type GameState } from './model';
+import { BALL_RADIUS, destroyBrick, formatTime, initialState, LEVEL_COUNT, loseLife, makeBricks, makeObstacles, nextLevel, PADDLE_Y, paddleVelocity, WIDTH, type GameState } from './model';
+import { arenaLayout } from './controls';
 
 const playing = (changes: Partial<GameState> = {}): GameState => ({ ...initialState(), status: 'playing', ...changes });
 
@@ -24,6 +25,45 @@ describe('level layouts', () => {
     expect(makeBricks(1).every(b => b.hp === 1)).toBe(true);
     expect(makeBricks(2).every(b => b.hp === 1)).toBe(true);
     expect(makeBricks(3).some(b => b.hp === 2)).toBe(true);
+  });
+});
+
+describe('fixed obstacles', () => {
+  it('keeps the first level clear and adds one barrier per later level', () => {
+    expect(makeObstacles(1)).toEqual([]);
+    expect([2, 3, 4, 5].map(level => makeObstacles(level).length)).toEqual([1, 2, 3, 4]);
+  });
+
+  it.each([2, 3, 4, 5])('level %i leaves open side passages and keeps barriers away from bricks and the player', level => {
+    const obstacles = makeObstacles(level);
+    const bricks = makeBricks(level);
+    for (const obstacle of obstacles) {
+      // A continuous corridor on both sides allows the ball to reach and leave the brick field.
+      expect(obstacle.x - obstacle.width / 2 - 10).toBeGreaterThan(BALL_RADIUS * 6);
+      expect(WIDTH - 10 - obstacle.x - obstacle.width / 2).toBeGreaterThan(BALL_RADIUS * 6);
+      for (const brick of bricks) {
+        expect(obstacle.y - obstacle.height / 2 - brick.y - 13).toBeGreaterThan(BALL_RADIUS * 2);
+      }
+      for (const other of obstacles) {
+        if (other === obstacle) continue;
+        const horizontalGap = Math.abs(obstacle.x - other.x) - (obstacle.width + other.width) / 2;
+        const verticalGap = Math.abs(obstacle.y - other.y) - (obstacle.height + other.height) / 2;
+        expect(horizontalGap > BALL_RADIUS * 2 || verticalGap > BALL_RADIUS * 2).toBe(true);
+      }
+      for (const [width, height] of [[320, 200], [375, 650], [390, 700], [750, 230], [900, 660]]) {
+        const { paddleY } = arenaLayout(width, height);
+        expect(paddleY - 17 - obstacle.y - obstacle.height / 2).toBeGreaterThan(BALL_RADIUS * 8);
+      }
+    }
+  });
+
+  it.each([2, 3, 4, 5])('level %i finishes by clearing only destructible bricks', level => {
+    const total = makeBricks(level).length;
+    let state = playing({ level, total, remaining: total });
+    for (let i = 0; i < total; i++) state = destroyBrick(state);
+    expect(makeObstacles(level).length).toBeGreaterThan(0);
+    expect(state.remaining).toBe(0);
+    expect(state.status).toBe(level === LEVEL_COUNT ? 'won' : 'level-complete');
   });
 });
 

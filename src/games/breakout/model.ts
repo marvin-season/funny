@@ -9,6 +9,7 @@ export const SOUND_KEY = 'moment:breakout:sound:v1';
 
 export type Status = 'ready' | 'playing' | 'paused' | 'level-complete' | 'won' | 'lost';
 export type Brick = { x: number; y: number; hp: number; color: number };
+export type Obstacle = { x: number; y: number; width: number; height: number };
 export type GameState = {
   status: Status;
   level: number;
@@ -36,6 +37,16 @@ export function makeBricks(level: number): Brick[] {
     }
   }
   return bricks;
+}
+
+export function makeObstacles(level: number): Obstacle[] {
+  const layouts: Record<number, Omit<Obstacle, 'height'>[]> = {
+    2: [{ x: 360, y: 344, width: 120 }],
+    3: [{ x: 230, y: 336, width: 108 }, { x: 490, y: 376, width: 108 }],
+    4: [{ x: 174, y: 332, width: 112 }, { x: 546, y: 332, width: 112 }, { x: 360, y: 400, width: 128 }],
+    5: [{ x: 180, y: 332, width: 120 }, { x: 540, y: 332, width: 120 }, { x: 270, y: 416, width: 104 }, { x: 450, y: 416, width: 104 }],
+  };
+  return (layouts[level] ?? []).map(obstacle => ({ ...obstacle, height: 16 }));
 }
 
 export function initialState(): GameState {
