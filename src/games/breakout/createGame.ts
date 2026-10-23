@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { BALL_RADIUS, destroyBrick, HEIGHT, initialState, loseLife, makeBricks, nextLevel, PADDLE_WIDTH, PADDLE_Y, paddleVelocity, WIDTH, type GameControls, type GameState } from './model';
+import { BALL_RADIUS, destroyBrick, initialState, loseLife, makeBricks, nextLevel, PADDLE_WIDTH, paddleVelocity, WIDTH, type GameControls, type GameState } from './model';
+import { arenaLayout, TouchDrag } from './controls';
 
 type Options = {
   sound: boolean;
@@ -20,32 +21,33 @@ class BreakoutScene extends Phaser.Scene {
   private soundEnabled: boolean;
   private reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private lastSecond = -1;
-  private roundLabel!: Phaser.GameObjects.Text;
+  private background!: Phaser.GameObjects.Graphics;
+  private shadow!: Phaser.GameObjects.Ellipse;
+  private touchDrag = new TouchDrag();
+  private arena: ReturnType<typeof arenaLayout>;
+  private landscape = window.innerWidth > window.innerHeight;
 
-  constructor(private options: Options) {
+  constructor(private options: Options, private parent: HTMLElement) {
     super('breakout');
     this.soundEnabled = options.sound;
+    const bounds = parent.getBoundingClientRect();
+    this.arena = arenaLayout(bounds.width, bounds.height);
   }
 
   create() {
     this.makeTextures();
-    this.physics.world.setBounds(10, 10, WIDTH - 20, HEIGHT - 10, true, true, true, false);
-    const background = this.add.graphics();
-    background.fillStyle(0xffffff, 0.05);
-    for (let x = 24; x < WIDTH; x += 24) for (let y = 24; y < HEIGHT; y += 24) background.fillCircle(x, y, 0.9);
-    background.lineStyle(1, 0xffffff, 0.06).strokeRoundedRect(10, 10, WIDTH - 20, HEIGHT - 20, 16);
-    const textStyle = { fontFamily: 'system-ui, sans-serif', fontSize: '11px', color: '#93aa8e' };
-    this.roundLabel = this.add.text(35, 39, 'ROUND 01', textStyle);
-    this.add.text(WIDTH - 35, 39, 'TAKE A BREAK. BREAK A BRICK.', textStyle).setOrigin(1, 0);
-    this.add.ellipse(WIDTH / 2, PADDLE_Y + 22, PADDLE_WIDTH + 15, 8, 0x0a1b17, 0.15);
+    this.physics.world.setBounds(10, 10, WIDTH - 20, this.arena.height - 10, true, true, true, false);
+    this.background = this.add.graphics();
+    this.drawBackground();
+    this.shadow = this.add.ellipse(WIDTH / 2, this.arena.paddleY + 22, PADDLE_WIDTH + 15, 8, 0x0a1b17, 0.15);
     this.trail = this.add.graphics();
     this.particles = this.add.particles(0, 0, 'particle', {
       emitting: false, lifespan: 650, speed: { min: 35, max: 150 }, gravityY: 220,
       scale: { start: 1, end: 0 }, alpha: { start: 0.9, end: 0 }, maxParticles: 240,
     });
     this.bricks = this.physics.add.staticGroup();
-    this.paddle = this.physics.add.staticImage(WIDTH / 2, PADDLE_Y, 'paddle');
-    this.ball = this.physics.add.image(WIDTH / 2, PADDLE_Y - 17, 'ball').setCircle(BALL_RADIUS).setBounce(1).setCollideWorldBounds(true);
+    this.paddle = this.physics.add.staticImage(WIDTH / 2, this.arena.paddleY, 'paddle');
+    this.ball = this.physics.add.image(WIDTH / 2, this.arena.paddleY - 17, 'ball').setCircle(BALL_RADIUS).setBounce(1).setCollideWorldBounds(true);
     this.physics.add.collider(this.ball, this.bricks, (_ball, object) => this.hitBrick(object as Phaser.Physics.Arcade.Image));
     this.physics.add.collider(this.ball, this.paddle, () => this.hitPaddle(), () => this.state.status === 'playing' && this.ballBody.velocity.y > 0);
     this.setupLevel();
@@ -53,14 +55,24 @@ class BreakoutScene extends Phaser.Scene {
     const canvas = this.game.canvas;
     canvas.tabIndex = 0;
     canvas.setAttribute('aria-label', '打砖块游戏区。左右方向键或 A、D 移动挡板，空格发射或暂停，也可以用鼠标或手指移动。');
-    canvas.style.touchAction = 'none';
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (!pointer.wasTouch || pointer.isDown) this.movePaddle(pointer.x);
+      if (pointer.wasTouch) {
+        if (pointer.isDown) this.movePaddle(this.touchDrag.move(pointer.id, pointer.x, this.paddle.x));
+      } else this.movePaddle(pointer.x);
     });
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      this.movePaddle(pointer.x);
+      if (pointer.wasTouch) {
+        if (!this.touchDrag.begin(pointer.id, pointer.x)) return;
+      } else this.movePaddle(pointer.x);
       this.start();
     });
+    const releaseTouch = (pointer: Phaser.Input.Pointer) => this.touchDrag.end(pointer.id);
+    this.input.on('pointerup', releaseTouch);
+    this.input.on('pointerupoutside', releaseTouch);
+    const cancelTouch = () => this.pauseGame();
+    canvas.addEventListener('touchcancel', cancelTouch);
+    const observer = new ResizeObserver(() => this.resizeArena());
+    observer.observe(this.parent);
 
     const keyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -82,6 +94,9 @@ class BreakoutScene extends Phaser.Scene {
     window.addEventListener('blur', blur);
     document.addEventListener('visibilitychange', hidden);
     const cleanup = () => {
+      observer.disconnect();
+      canvas.removeEventListener('touchcancel', cancelTouch);
+      this.touchDrag.reset();
       window.removeEventListener('keydown', keyDown);
       window.removeEventListener('keyup', keyUp);
       window.removeEventListener('blur', blur);
@@ -96,6 +111,40 @@ class BreakoutScene extends Phaser.Scene {
   }
 
   private get ballBody() { return this.ball.body as Phaser.Physics.Arcade.Body; }
+
+  private drawBackground() {
+    this.background.clear().fillStyle(0xffffff, 0.05);
+    for (let x = 24; x < WIDTH; x += 24) for (let y = 24; y < this.arena.height; y += 24) this.background.fillCircle(x, y, 0.9);
+  }
+
+  private resizeArena() {
+    const bounds = this.parent.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) return;
+    const layout = arenaLayout(bounds.width, bounds.height);
+    const landscape = window.innerWidth > window.innerHeight;
+    if (landscape !== this.landscape) this.pauseGame();
+    this.landscape = landscape;
+    this.scale.getParentBounds();
+    if (layout.height === this.arena.height && layout.paddleY === this.arena.paddleY) {
+      this.scale.refresh();
+      return;
+    }
+    // Preserve the ball's position below the bricks when browser chrome or orientation changes.
+    const oldPaddleY = this.arena.paddleY;
+    const y = this.ball.y <= 300 ? this.ball.y : 300 + (this.ball.y - 300) * (layout.paddleY - 300) / (oldPaddleY - 300);
+    const { x: vx, y: vy } = this.ballBody.velocity;
+    this.arena = layout;
+    this.scale.setGameSize(WIDTH, layout.height);
+    this.physics.world.setBounds(10, 10, WIDTH - 20, layout.height - 10, true, true, true, false);
+    this.paddle.setY(layout.paddleY).refreshBody();
+    this.shadow.setPosition(this.paddle.x, layout.paddleY + 22);
+    this.ballBody.reset(this.ball.x, this.state.status === 'ready' ? layout.paddleY - 17 : y);
+    this.ball.setVelocity(vx, vy);
+    this.touchDrag.reset();
+    this.points = [];
+    this.trail.clear();
+    this.drawBackground();
+  }
 
   private makeTextures() {
     const graphics = this.add.graphics();
@@ -119,16 +168,17 @@ class BreakoutScene extends Phaser.Scene {
       brick.setTint(definition.color).setData({ hp: definition.hp, color: definition.color });
       if (definition.hp > 1) brick.setAlpha(0.65);
     }
-    this.roundLabel.setText(`ROUND ${String(this.state.level).padStart(2, '0')}`);
     this.resetBall();
   }
 
   private resetBall() {
     this.physics.pause();
     this.keys.clear();
-    this.paddle.setPosition(WIDTH / 2, PADDLE_Y).refreshBody();
+    this.touchDrag.reset();
+    this.paddle.setPosition(WIDTH / 2, this.arena.paddleY).refreshBody();
+    this.shadow.setPosition(WIDTH / 2, this.arena.paddleY + 22);
     this.ball.setVisible(true);
-    this.ballBody.reset(WIDTH / 2, PADDLE_Y - 17);
+    this.ballBody.reset(WIDTH / 2, this.arena.paddleY - 17);
     this.points = [];
     this.trail.clear();
   }
@@ -137,7 +187,8 @@ class BreakoutScene extends Phaser.Scene {
     if (!['playing', 'ready'].includes(this.state.status)) return;
     const position = Phaser.Math.Clamp(x, PADDLE_WIDTH / 2 + 12, WIDTH - PADDLE_WIDTH / 2 - 12);
     this.paddle.setX(position).refreshBody();
-    if (this.state.status === 'ready') this.ballBody.reset(position, PADDLE_Y - 17);
+    this.shadow.setX(position);
+    if (this.state.status === 'ready') this.ballBody.reset(position, this.arena.paddleY - 17);
   }
 
   private start() {
@@ -155,6 +206,7 @@ class BreakoutScene extends Phaser.Scene {
 
   private pauseGame() {
     this.keys.clear();
+    this.touchDrag.reset();
     if (this.state.status !== 'playing') return;
     this.state.status = 'paused';
     this.physics.pause();
@@ -211,7 +263,7 @@ class BreakoutScene extends Phaser.Scene {
     if (this.state.status !== 'playing') return;
     this.state.seconds += Math.min(delta, 50) / 1000;
     if (Math.floor(this.state.seconds) !== this.lastSecond) { this.lastSecond = Math.floor(this.state.seconds); this.publish(); }
-    if (this.ball.y > HEIGHT + BALL_RADIUS) {
+    if (this.ball.y > this.arena.height + BALL_RADIUS) {
       this.state = loseLife(this.state);
       this.resetBall();
       if (this.state.status === 'lost') this.ball.setVisible(false);
@@ -264,11 +316,14 @@ class BreakoutScene extends Phaser.Scene {
 }
 
 export function createGame(parent: HTMLElement, options: Options) {
+  const bounds = parent.getBoundingClientRect();
+  const layout = arenaLayout(bounds.width, bounds.height);
   return new Phaser.Game({
-    type: Phaser.AUTO, parent, width: WIDTH, height: HEIGHT, backgroundColor: '#20372c',
+    type: Phaser.AUTO, parent, width: WIDTH, height: layout.height, backgroundColor: '#20372c',
     banner: false, audio: { noAudio: true },
+    input: { activePointers: 2, touch: { capture: true } },
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, fps: 120, fixedStep: true } },
-    scene: new BreakoutScene(options),
+    scene: new BreakoutScene(options, parent),
   });
 }

@@ -59,11 +59,13 @@ function Home() {
 
 export default function App() {
   const { pathname } = useLocation();
+  if (pathname === '/games/breakout' || pathname === '/games/breakout/') {
+    return <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-[#20372c] text-sm text-lime">正在准备你的小游戏…</div>}><Breakout /></Suspense>;
+  }
   return <div className="flex min-h-dvh flex-col">
     <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-6 sm:px-8 sm:py-7"><Brand /><div className="flex items-center gap-2 text-xs text-muted">{pathname === '/' ? <><span className="size-1.5 rounded-full bg-[#93aa70]" /><span className="hidden min-[380px]:inline">快乐，不必很复杂</span></> : <Link to="/" className="flex items-center gap-2 rounded-full px-3 py-2 transition-colors hover:bg-[#e9ede2]"><Grid2X2 size={15} /><span>全部游戏</span></Link>}</div></header>
     <div className="flex-1"><Suspense fallback={<p className="px-6 py-24 text-center text-sm text-muted">正在准备你的小游戏…</p>}><Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/games/breakout" element={<Breakout />} />
       <Route path="*" element={<div className="px-6 py-24 text-center"><h1 className="text-2xl font-semibold">这里还没有小游戏</h1><Link to="/" className="mt-6 inline-flex items-center gap-2 text-sm text-forest"><ArrowLeft size={16} />回到首页</Link></div>} />
     </Routes></Suspense></div>
     <footer className="mx-auto flex w-full max-w-6xl flex-wrap items-center justify-between gap-3 border-t border-line px-5 py-6 text-[11px] text-muted sm:px-8"><span>片刻 PLAYROOM <span className="mx-2 text-[#c2c9b8]">/</span> 让快乐简单一点</span><span className="flex items-center gap-1.5"><Leaf size={12} /> 给自己一小段松弛的时间</span></footer>
