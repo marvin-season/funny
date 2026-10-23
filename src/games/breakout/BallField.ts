@@ -5,6 +5,7 @@ import { boostedPaddleVelocity, splitBall } from './ball-motion';
 export class BallField {
   readonly group: Phaser.Physics.Arcade.Group;
   multiplier = 1;
+  speeding = false;
   private trail: Phaser.GameObjects.Graphics;
   private points = new Map<Phaser.Physics.Arcade.Image, { x: number; y: number }[]>();
 
@@ -14,6 +15,16 @@ export class BallField {
   }
 
   get active() { return this.group.getChildren().filter(ball => ball.active) as Phaser.Physics.Arcade.Image[]; }
+
+  setSpeeding(enabled: boolean) {
+    if (enabled === this.speeding) return;
+    const factor = enabled ? 2 : 0.5;
+    for (const ball of this.active) {
+      const { x, y } = (ball.body as Phaser.Physics.Arcade.Body).velocity;
+      ball.setVelocity(x * factor, y * factor);
+    }
+    this.speeding = enabled;
+  }
 
   private spawn(x: number, y: number) {
     const ball = this.group.create(x, y, 'ball') as Phaser.Physics.Arcade.Image;
@@ -25,6 +36,7 @@ export class BallField {
 
   clear() {
     this.group.clear(true, true);
+    this.speeding = false;
     this.points.clear();
     this.trail.clear();
   }
@@ -32,6 +44,7 @@ export class BallField {
   hide() {
     // Collision callbacks can still be iterating the group; disable rather than destroy here.
     for (const ball of this.active) ball.disableBody(true, true);
+    this.speeding = false;
     this.points.clear();
     this.trail.clear();
   }
@@ -65,7 +78,7 @@ export class BallField {
 
   bounceOnPaddle(ball: Phaser.Physics.Arcade.Image, offset: number) {
     const body = ball.body as Phaser.Physics.Arcade.Body;
-    const velocity = boostedPaddleVelocity(offset, body.velocity.length(), this.multiplier);
+    const velocity = boostedPaddleVelocity(offset, body.velocity.length(), this.multiplier * (this.speeding ? 2 : 1));
     ball.setVelocity(velocity.x, velocity.y);
   }
 

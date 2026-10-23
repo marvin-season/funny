@@ -21,8 +21,8 @@ export type GameState = {
   remaining: number;
   total: number;
 };
-export type GameControls = { start: () => void; pause: () => void; restart: () => void; next: () => void; setSound: (enabled: boolean) => void };
-export type GameSnapshot = GameState & { ballCount: number; frenzy: boolean };
+export type GameControls = { start: () => void; pause: () => void; restart: () => void; next: () => void; setSound: (enabled: boolean) => void; setSpeeding: (enabled: boolean) => void };
+export type GameSnapshot = GameState & { ballCount: number; frenzy: boolean; speeding: boolean };
 
 const colors = [0xd4ed8a, 0xadcbb0, 0xe8cb99, 0xa9c6d0, 0xc7b8da];
 

@@ -111,6 +111,7 @@ class BreakoutScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, cleanup);
     this.events.once(Phaser.Scenes.Events.DESTROY, cleanup);
     this.options.onReady({ start: () => this.start(), pause: () => this.pauseGame(), restart: () => this.restart(), next: () => this.next(),
+      setSpeeding: enabled => this.setSpeeding(enabled),
       setSound: enabled => { this.soundEnabled = enabled; if (enabled) this.unlockAudio(); } });
     this.publish();
   }
@@ -239,9 +240,17 @@ class BreakoutScene extends Phaser.Scene {
   private pauseGame() {
     this.keys.clear();
     this.touchDrag.reset();
+    this.balls.setSpeeding(false);
     if (this.state.status !== 'playing') return;
     this.state.status = 'paused';
     this.physics.pause();
+    this.publish();
+  }
+
+  private setSpeeding(enabled: boolean) {
+    if (enabled && this.state.status !== 'playing') return;
+    if (enabled === this.balls.speeding) return;
+    this.balls.setSpeeding(enabled);
     this.publish();
   }
 
@@ -340,7 +349,7 @@ class BreakoutScene extends Phaser.Scene {
     if (previousCount !== this.balls.active.length) this.publish();
   }
 
-  private publish() { this.options.onState({ ...this.state, seconds: Math.floor(this.state.seconds), ballCount: this.balls.active.length, frenzy: this.balls.multiplier > 1 }); }
+  private publish() { this.options.onState({ ...this.state, seconds: Math.floor(this.state.seconds), ballCount: this.balls.active.length, frenzy: this.balls.multiplier > 1, speeding: this.balls.speeding }); }
 
   private unlockAudio() {
     if (!this.soundEnabled) return;

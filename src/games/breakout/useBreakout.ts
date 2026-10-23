@@ -4,7 +4,7 @@ import { BEST_KEY, initialState, readBest, readSound, SOUND_KEY, type GameContro
 export function useBreakout() {
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<GameControls | null>(null);
-  const [hud, setHud] = useState<GameSnapshot>(() => ({ ...initialState(), ballCount: 1, frenzy: false }));
+  const [hud, setHud] = useState<GameSnapshot>(() => ({ ...initialState(), ballCount: 1, frenzy: false, speeding: false }));
   const [best, setBest] = useState(readBest);
   const bestRef = useRef(best);
   const [sound, setSound] = useState(readSound);
@@ -44,6 +44,7 @@ export function useBreakout() {
   const pause = useCallback(() => controlsRef.current?.pause(), []);
   const restart = useCallback(() => controlsRef.current?.restart(), []);
   const next = useCallback(() => controlsRef.current?.next(), []);
+  const setSpeeding = useCallback((enabled: boolean) => controlsRef.current?.setSpeeding(enabled), []);
   const toggleSound = useCallback(() => {
     soundRef.current = !soundRef.current;
     setSound(soundRef.current);
@@ -51,5 +52,5 @@ export function useBreakout() {
     try { localStorage.setItem(SOUND_KEY, soundRef.current ? 'on' : 'off'); } catch { /* Optional preference. */ }
   }, []);
 
-  return { containerRef, hud, best, sound, ready, loadError, storageError, start, pause, restart, next, toggleSound };
+  return { containerRef, hud, best, sound, ready, loadError, storageError, start, pause, restart, next, toggleSound, setSpeeding };
 }

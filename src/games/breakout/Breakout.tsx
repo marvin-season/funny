@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import { formatTime, LEVEL_COUNT } from './model';
 import { useBreakout } from './useBreakout';
+import HoldSpeedButton from './HoldSpeedButton';
 
 export default function Breakout() {
   const game = useBreakout();
@@ -66,7 +67,7 @@ export default function Breakout() {
 
     <footer className="mx-auto flex w-full max-w-[900px] shrink-0 items-center justify-between gap-2 border-t border-white/10 px-3 py-1">
       <button disabled={!game.ready} onClick={askRestart} aria-label="重新开始" className="flex size-11 items-center justify-center rounded-xl text-[#bdcdb7] hover:bg-white/10 disabled:opacity-30"><RotateCcw size={19} /></button>
-      <span role="status" className="text-[11px] text-[#a4b99d]">{hud.frenzy && hud.status === 'playing' ? `双倍狂热 · ${hud.ballCount} 球 · 2× 球速` : '接住 ×2：球数、球速翻倍'}</span>
+      <HoldSpeedButton enabled={hud.status === 'playing'} speeding={hud.speeding} frenzy={hud.frenzy} ballCount={hud.ballCount} onChange={game.setSpeeding} />
       <button aria-label={game.sound ? '关闭音效' : '开启音效'} aria-pressed={game.sound} onClick={game.toggleSound} className="flex size-11 items-center justify-center rounded-xl text-[#bdcdb7] hover:bg-white/10">{game.sound ? <Volume2 size={20} /> : <VolumeX size={20} />}</button>
     </footer>
     {confirmRestart && <ConfirmDialog onCancel={() => { setConfirmRestart(false); if (resumeOnCancel.current) requestAnimationFrame(game.start); }} onConfirm={() => { setConfirmRestart(false); requestAnimationFrame(game.restart); }} />}

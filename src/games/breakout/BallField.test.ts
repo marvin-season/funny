@@ -29,6 +29,76 @@ function fieldFixture() {
 }
 
 describe('multi-ball lifecycle', () => {
+  it('temporarily doubles speed without stacking repeated presses, and restores the current direction', () => {
+    const field = fieldFixture();
+    field.reset(360, 580);
+    field.launch(400);
+    field.setSpeeding(true);
+    field.setSpeeding(true);
+    const ball = field.active[0];
+    expect((ball.body as Phaser.Physics.Arcade.Body).velocity.length()).toBeCloseTo(800);
+    ball.setVelocity(-480, 640);
+    field.setSpeeding(false);
+    field.setSpeeding(false);
+    expect((ball.body as Phaser.Physics.Arcade.Body).velocity).toMatchObject({ x: -240, y: 320 });
+    expect(field.speeding).toBe(false);
+  });
+
+  it('stacks with frenzy but retains frenzy when the hold is released', () => {
+    const field = fieldFixture();
+    field.reset(360, 580);
+    field.launch(400);
+    field.double(660);
+    field.setSpeeding(true);
+    for (const ball of field.active) expect((ball.body as Phaser.Physics.Arcade.Body).velocity.length()).toBeCloseTo(1600);
+    field.setSpeeding(false);
+    expect(field.multiplier).toBe(2);
+    for (const ball of field.active) expect((ball.body as Phaser.Physics.Arcade.Body).velocity.length()).toBeCloseTo(800);
+  });
+
+  it('also restores newly split balls when a buff is collected during the hold', () => {
+    const field = fieldFixture();
+    field.reset(360, 580);
+    field.launch(450);
+    field.setSpeeding(true);
+    field.double(660);
+    expect(field.active).toHaveLength(2);
+    for (const ball of field.active) expect((ball.body as Phaser.Physics.Arcade.Body).velocity.length()).toBeCloseTo(1800);
+    field.setSpeeding(false);
+    for (const ball of field.active) expect((ball.body as Phaser.Physics.Arcade.Body).velocity.length()).toBeCloseTo(900);
+  });
+
+  it('keeps the speed layers through a paddle collision and releases only the temporary layer', () => {
+    const field = fieldFixture();
+    field.reset(360, 580);
+    field.launch(400);
+    field.double(660);
+    field.setSpeeding(true);
+    const ball = field.active[0];
+    field.bounceOnPaddle(ball, -0.7);
+    expect((ball.body as Phaser.Physics.Arcade.Body).velocity.length()).toBeCloseTo(1612);
+    field.setSpeeding(false);
+    const velocity = (ball.body as Phaser.Physics.Arcade.Body).velocity;
+    expect(velocity.length()).toBeCloseTo(806);
+    expect(velocity.x).toBeLessThan(0);
+    expect(velocity.y).toBeLessThan(0);
+  });
+
+  it('clears temporary acceleration on a new life or a completed level', () => {
+    const field = fieldFixture();
+    field.reset(360, 580);
+    field.launch(400);
+    field.setSpeeding(true);
+    field.reset(360, 580);
+    expect(field.speeding).toBe(false);
+    field.launch(350);
+    field.setSpeeding(false);
+    expect((field.active[0].body as Phaser.Physics.Arcade.Body).velocity.length()).toBeCloseTo(350);
+    field.setSpeeding(true);
+    field.hide();
+    expect(field.speeding).toBe(false);
+  });
+
   it('doubles a snapshot of existing balls exactly once per pickup', () => {
     const field = fieldFixture();
     field.reset(360, 580);
