@@ -19,7 +19,7 @@ function Home() {
         <div className="mb-6 flex items-center gap-2 text-xs font-medium tracking-widest text-forest"><span className="size-1.5 rounded-full bg-forest" /> 给日常，按一下暂停</div>
         <h1 className="text-[38px] leading-[1.45] font-semibold tracking-tight sm:text-5xl">留一点时间，<br />给<span className="relative inline-block">好玩<span className="absolute inset-x-0 bottom-0.5 -z-10 h-3 bg-lime sm:bottom-1 sm:h-4" /></span>。</h1>
         <p className="mt-6 text-sm leading-7 text-[#74816c]">不用赶时间，也不用想太多。<br />在小小的游戏里，找回一点简单的快乐。</p>
-        <a href="#games" className="mt-8 inline-flex items-center gap-6 rounded-full bg-ink px-6 py-3.5 text-sm font-medium text-white transition-colors hover:bg-forest">挑一个，玩一会儿 <ArrowRight size={17} /></a>
+        <button type="button" onClick={() => document.getElementById('games')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' })} className="mt-8 inline-flex items-center gap-6 rounded-full bg-ink px-6 py-3.5 text-sm font-medium text-white transition-colors hover:bg-forest">挑一个，玩一会儿 <ArrowRight size={17} /></button>
       </div>
       <div className="relative mt-12 flex min-h-64 items-center justify-center px-3 md:mt-0">
         <div className="absolute size-60 rounded-full border border-[#dbe4c8] sm:size-80" />

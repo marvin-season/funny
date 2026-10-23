@@ -9,8 +9,8 @@ pnpm install
 pnpm dev
 ```
 
-- 首页：`/`
-- 打砖块：`/games/breakout`
+- 首页：`/#/`
+- 打砖块：`/#/games/breakout`
 
 ## 打砖块
 
@@ -33,6 +33,23 @@ pnpm build
 pnpm preview
 ```
 
-部署 `dist/` 时需要配置 SPA 回退，将 `/games/*` 等页面路径回退到 `index.html`，以便直接访问或刷新游戏页面。
+项目是纯前端静态应用，发布时只需要托管 `dist/`。Node.js 只用于开发和构建，线上无需 Node.js 服务、数据库或 API 密钥。最高分保存在本地浏览器，不会跨设备同步。
+
+## 部署到 GitHub Pages
+
+工作流位于 `.github/workflows/pages.yml`，使用 Node.js 22 和 `package.json` 中指定的 pnpm 版本。
+
+首次部署：
+
+1. 将本项目推送到 GitHub 仓库，默认分支使用 `master` 或 `main`。
+2. 打开仓库 **Settings → Pages → Build and deployment → Source**，选择 **GitHub Actions**。
+3. 打开 **Actions → Deploy to GitHub Pages → Run workflow**，选择默认分支运行。
+4. 部署成功后，在工作流的 `github-pages` 环境或 Settings → Pages 中打开网站地址。
+
+以后推送到默认分支会自动运行测试、构建并发布。也可以手动运行工作流；非默认分支不会发布。使用 GitHub 自动提供的 `GITHUB_TOKEN`，无需另配个人令牌。
+
+资源使用相对路径，支持 `https://用户名.github.io/仓库名/`、用户主页和自定义域名。路由使用 HashRouter，游戏地址例如 `https://用户名.github.io/仓库名/#/games/breakout`，刷新和分享该链接不会请求不存在的服务器路径，无需配置 SPA 回退或额外的 `404.html`。
+
+首次执行前需先启用 Pages 的 GitHub Actions 来源，否则 Configure Pages 步骤可能失败。官方说明：[使用 GitHub Actions 发布 Pages](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)。
 
 游戏放在 `src/games/` 下，后续可以添加独立模块和首页入口。
