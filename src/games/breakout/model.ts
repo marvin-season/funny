@@ -3,6 +3,8 @@ export const HEIGHT = 660;
 export const PADDLE_Y = 604;
 export const PADDLE_WIDTH = 124;
 export const BALL_RADIUS = 8;
+export const BRICK_WIDTH = 48;
+export const BRICK_HEIGHT = 22;
 export const LEVEL_COUNT = 5;
 export const BEST_KEY = 'moment:breakout:best:v1';
 export const SOUND_KEY = 'moment:breakout:sound:v1';
@@ -28,13 +30,13 @@ const colors = [0xd4ed8a, 0xadcbb0, 0xe8cb99, 0xa9c6d0, 0xc7b8da];
 
 export function makeBricks(level: number): Brick[] {
   const bricks: Brick[] = [];
-  for (let row = 0; row < 6; row++) {
-    for (let col = 0; col < 9; col++) {
-      if (level === 1 && (row === 5 || ((col === 0 || col === 8) && row === 0))) continue;
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 12; col++) {
+      if (level === 1 && (row === 7 || ((col === 0 || col === 11) && row === 0))) continue;
       if (level === 2 && (row + col) % 4 === 0) continue;
-      if (level === 3 && Math.abs(col - 4) > row + 1) continue;
-      if (level === 4 && (col === 2 || col === 6) && row % 2 === 0) continue;
-      bricks.push({ x: 68 + col * 73, y: 98 + row * 35, hp: level >= 3 && (row + col) % 5 === 0 ? 2 : 1, color: colors[row % colors.length] });
+      if (level === 3 && Math.abs(col - 5.5) > row + 1) continue;
+      if (level === 4 && (col === 2 || col === 6 || col === 9) && row % 2 === 0) continue;
+      bricks.push({ x: 63 + col * 54, y: 70 + row * 28, hp: level >= 3 && (row + col) % 5 === 0 ? 2 : 1, color: colors[row % colors.length] });
     }
   }
   // One marked brick per level, low in the formation so the first pickup is reachable early.

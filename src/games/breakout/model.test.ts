@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BALL_RADIUS, destroyBrick, formatTime, initialState, LEVEL_COUNT, loseLife, makeBricks, makeObstacles, nextLevel, PADDLE_Y, paddleVelocity, WIDTH, type GameState } from './model';
+import { BALL_RADIUS, BRICK_HEIGHT, BRICK_WIDTH, destroyBrick, formatTime, initialState, LEVEL_COUNT, loseLife, makeBricks, makeObstacles, nextLevel, PADDLE_Y, paddleVelocity, WIDTH, type GameState } from './model';
 import { arenaLayout } from './controls';
 
 const playing = (changes: Partial<GameState> = {}): GameState => ({ ...initialState(), status: 'playing', ...changes });
@@ -7,16 +7,17 @@ const playing = (changes: Partial<GameState> = {}): GameState => ({ ...initialSt
 describe('level layouts', () => {
   it.each([1, 2, 3, 4, 5])('level %i has distinct non-overlapping bricks within the arena', level => {
     const bricks = makeBricks(level);
-    expect(bricks.length).toBeGreaterThan(20);
+    expect(bricks.length).toBeGreaterThanOrEqual(66);
+    expect(bricks.length).toBeLessThanOrEqual(96);
     expect(new Set(bricks.map(b => `${b.x},${b.y}`)).size).toBe(bricks.length);
     for (const brick of bricks) {
-      expect(brick.x - 33).toBeGreaterThan(BALL_RADIUS);
-      expect(brick.x + 33).toBeLessThan(WIDTH - BALL_RADIUS);
-      expect(brick.y + 13).toBeLessThan(PADDLE_Y - 200);
+      expect(brick.x - BRICK_WIDTH / 2).toBeGreaterThan(BALL_RADIUS);
+      expect(brick.x + BRICK_WIDTH / 2).toBeLessThan(WIDTH - BALL_RADIUS);
+      expect(brick.y + BRICK_HEIGHT / 2).toBeLessThan(PADDLE_Y - 200);
       expect([1, 2]).toContain(brick.hp);
       for (const other of bricks) {
         if (brick === other) continue;
-        expect(Math.abs(brick.x - other.x) >= 66 || Math.abs(brick.y - other.y) >= 26).toBe(true);
+        expect(Math.abs(brick.x - other.x) >= BRICK_WIDTH || Math.abs(brick.y - other.y) >= BRICK_HEIGHT).toBe(true);
       }
     }
   });
@@ -42,7 +43,7 @@ describe('fixed obstacles', () => {
       expect(obstacle.x - obstacle.width / 2 - 10).toBeGreaterThan(BALL_RADIUS * 6);
       expect(WIDTH - 10 - obstacle.x - obstacle.width / 2).toBeGreaterThan(BALL_RADIUS * 6);
       for (const brick of bricks) {
-        expect(obstacle.y - obstacle.height / 2 - brick.y - 13).toBeGreaterThan(BALL_RADIUS * 2);
+        expect(obstacle.y - obstacle.height / 2 - brick.y - BRICK_HEIGHT / 2).toBeGreaterThan(BALL_RADIUS * 2);
       }
       for (const other of obstacles) {
         if (other === obstacle) continue;

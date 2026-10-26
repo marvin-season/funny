@@ -15,7 +15,21 @@ export function useBreakout() {
 
   useEffect(() => {
     let cancelled = false;
+    let saveTimer: number | undefined;
+    let savedBest = bestRef.current;
     let game: { destroy: (removeCanvas: boolean) => void } | undefined;
+    const flushBest = () => {
+      window.clearTimeout(saveTimer);
+      saveTimer = undefined;
+      if (savedBest === bestRef.current) return;
+      try {
+        localStorage.setItem(BEST_KEY, String(bestRef.current));
+        savedBest = bestRef.current;
+      } catch { if (!cancelled) setStorageError(true); }
+    };
+    const onHidden = () => { if (document.hidden) flushBest(); };
+    window.addEventListener('pagehide', flushBest);
+    document.addEventListener('visibilitychange', onHidden);
     // Async import avoids booting an abandoned game during React StrictMode's setup check.
     void import('./createGame').then(({ createGame }) => {
       if (cancelled || !containerRef.current) return;
@@ -27,8 +41,10 @@ export function useBreakout() {
           if (state.score > bestRef.current) {
             bestRef.current = state.score;
             setBest(state.score);
-            try { localStorage.setItem(BEST_KEY, String(state.score)); } catch { setStorageError(true); }
+            // Batch synchronous storage writes instead of blocking every brick collision.
+            saveTimer ??= window.setTimeout(flushBest, 500);
           }
+          if (state.status !== 'playing') flushBest();
         },
         onReady: controls => {
           if (cancelled) return;
@@ -37,7 +53,14 @@ export function useBreakout() {
         },
       });
     }).catch(() => { if (!cancelled) setLoadError(true); });
-    return () => { cancelled = true; controlsRef.current = null; game?.destroy(true); };
+    return () => {
+      cancelled = true;
+      flushBest();
+      window.removeEventListener('pagehide', flushBest);
+      document.removeEventListener('visibilitychange', onHidden);
+      controlsRef.current = null;
+      game?.destroy(true);
+    };
   }, []);
 
   const start = useCallback(() => controlsRef.current?.start(), []);

@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
-import { BALL_RADIUS, destroyBrick, initialState, loseLife, makeBricks, makeObstacles, nextLevel, PADDLE_WIDTH, WIDTH, type GameControls, type GameSnapshot } from './model';
+import { BALL_RADIUS, BRICK_HEIGHT, BRICK_WIDTH, destroyBrick, initialState, loseLife, makeBricks, makeObstacles, nextLevel, PADDLE_WIDTH, WIDTH, type GameControls, type GameSnapshot } from './model';
 import { arenaLayout, TouchDrag } from './controls';
 import { BallField } from './BallField';
+import { performanceProfile, physicsFps, wakeGameLoop } from './performance';
 
 type Options = {
   sound: boolean;
@@ -22,13 +23,13 @@ class BreakoutScene extends Phaser.Scene {
   private soundEnabled: boolean;
   private reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private lastSecond = -1;
-  private background!: Phaser.GameObjects.Graphics;
+  private background!: Phaser.GameObjects.TileSprite;
   private shadow!: Phaser.GameObjects.Ellipse;
   private touchDrag = new TouchDrag();
   private arena: ReturnType<typeof arenaLayout>;
   private landscape = window.innerWidth > window.innerHeight;
 
-  constructor(private options: Options, private parent: HTMLElement) {
+  constructor(private options: Options, private parent: HTMLElement, private performance: ReturnType<typeof performanceProfile>) {
     super('breakout');
     this.soundEnabled = options.sound;
     const bounds = parent.getBoundingClientRect();
@@ -38,13 +39,12 @@ class BreakoutScene extends Phaser.Scene {
   create() {
     this.makeTextures();
     this.physics.world.setBounds(10, 10, WIDTH - 20, this.arena.height - 10, true, true, true, false);
-    this.background = this.add.graphics();
-    this.drawBackground();
+    this.background = this.add.tileSprite(0, 0, WIDTH, this.arena.height, 'background').setOrigin(0);
     this.shadow = this.add.ellipse(WIDTH / 2, this.arena.paddleY + 22, PADDLE_WIDTH + 15, 8, 0x0a1b17, 0.15);
-    this.balls = new BallField(this);
+    this.balls = new BallField(this, this.performance.trailLength);
     this.particles = this.add.particles(0, 0, 'particle', {
-      emitting: false, lifespan: 650, speed: { min: 35, max: 150 }, gravityY: 220,
-      scale: { start: 1, end: 0 }, alpha: { start: 0.9, end: 0 }, maxParticles: 240,
+      emitting: false, lifespan: this.performance.particleLife, speed: { min: 35, max: 150 }, gravityY: 220,
+      scale: { start: 1, end: 0 }, alpha: { start: 0.9, end: 0 }, maxParticles: this.performance.maxParticles,
     });
     this.bricks = this.physics.add.staticGroup();
     this.obstacles = this.physics.add.staticGroup();
@@ -78,12 +78,16 @@ class BreakoutScene extends Phaser.Scene {
     canvas.addEventListener('touchcancel', cancelTouch);
     const observer = new ResizeObserver(() => this.resizeArena());
     observer.observe(this.parent);
+    const sleepIfIdle = () => {
+      if (this.state.status !== 'playing' && this.keys.size === 0) this.game.loop.sleep();
+    };
+    this.game.events.on(Phaser.Core.Events.POST_RENDER, sleepIfIdle);
 
     const keyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.target instanceof HTMLElement && event.target.closest('button, a, input, select, textarea, dialog, [contenteditable="true"]')) return;
       const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-      if (['ArrowLeft', 'ArrowRight', 'a', 'd'].includes(key)) { event.preventDefault(); this.keys.add(key); }
+      if (['ArrowLeft', 'ArrowRight', 'a', 'd'].includes(key)) { event.preventDefault(); this.keys.add(key); wakeGameLoop(this.game.loop); }
       if ([' ', 'Enter', 'Escape'].includes(key)) {
         event.preventDefault();
         if (event.repeat) return;
@@ -99,6 +103,7 @@ class BreakoutScene extends Phaser.Scene {
     window.addEventListener('blur', blur);
     document.addEventListener('visibilitychange', hidden);
     const cleanup = () => {
+      this.game.events.off(Phaser.Core.Events.POST_RENDER, sleepIfIdle);
       observer.disconnect();
       canvas.removeEventListener('touchcancel', cancelTouch);
       this.touchDrag.reset();
@@ -116,9 +121,9 @@ class BreakoutScene extends Phaser.Scene {
     this.publish();
   }
 
-  private drawBackground() {
-    this.background.clear().fillStyle(0xffffff, 0.05);
-    for (let x = 24; x < WIDTH; x += 24) for (let y = 24; y < this.arena.height; y += 24) this.background.fillCircle(x, y, 0.9);
+  private syncPhysicsRate() {
+    const fps = physicsFps(this.balls.speedMultiplier);
+    if (this.physics.world.fps !== fps) this.physics.world.setFPS(fps);
   }
 
   private resizeArena() {
@@ -131,6 +136,7 @@ class BreakoutScene extends Phaser.Scene {
     this.scale.getParentBounds();
     if (layout.height === this.arena.height && layout.paddleY === this.arena.paddleY) {
       this.scale.refresh();
+      wakeGameLoop(this.game.loop);
       return;
     }
     // Keep the fixed obstacle region unchanged so resizing cannot place the ball inside a barrier.
@@ -150,13 +156,14 @@ class BreakoutScene extends Phaser.Scene {
       powerup.setVelocityY(this.dropSpeed(powerup.y));
     }
     this.touchDrag.reset();
-    this.drawBackground();
+    this.background.setSize(WIDTH, layout.height);
+    wakeGameLoop(this.game.loop);
   }
 
   private makeTextures() {
     const graphics = this.add.graphics();
-    graphics.fillStyle(0xffffff).fillRoundedRect(0, 0, 66, 26, 5);
-    graphics.generateTexture('brick', 66, 26);
+    graphics.fillStyle(0xffffff).fillRoundedRect(0, 0, BRICK_WIDTH, BRICK_HEIGHT, 4);
+    graphics.generateTexture('brick', BRICK_WIDTH, BRICK_HEIGHT);
     graphics.clear().fillStyle(0xf7ffe5).fillCircle(BALL_RADIUS, BALL_RADIUS, BALL_RADIUS);
     graphics.generateTexture('ball', BALL_RADIUS * 2, BALL_RADIUS * 2);
     graphics.clear().fillStyle(0xd4ed8a).fillRoundedRect(0, 0, PADDLE_WIDTH, 14, 7);
@@ -170,8 +177,10 @@ class BreakoutScene extends Phaser.Scene {
     graphics.generateTexture('obstacle', 128, 16);
     graphics.clear().fillStyle(0xffffff).fillRect(0, 0, 5, 5);
     graphics.generateTexture('particle', 5, 5);
+    graphics.clear().fillStyle(0xffffff, 0.05).fillCircle(12, 12, 0.9);
+    graphics.generateTexture('background', 24, 24);
     graphics.destroy();
-    for (const [key, width, height] of [['frenzy-brick', 66, 26], ['frenzy-drop', 46, 34]] as const) {
+    for (const [key, width, height] of [['frenzy-brick', BRICK_WIDTH, BRICK_HEIGHT], ['frenzy-drop', 46, 34]] as const) {
       const texture = this.textures.createCanvas(key, width, height)!;
       const context = texture.getContext();
       context.fillStyle = '#f5b85b';
@@ -214,6 +223,8 @@ class BreakoutScene extends Phaser.Scene {
     this.paddle.setPosition(WIDTH / 2, this.arena.paddleY).refreshBody();
     this.shadow.setPosition(WIDTH / 2, this.arena.paddleY + 22);
     this.balls.reset(WIDTH / 2, this.arena.paddleY - 17);
+    this.syncPhysicsRate();
+    wakeGameLoop(this.game.loop);
   }
 
   private movePaddle(x: number) {
@@ -221,7 +232,10 @@ class BreakoutScene extends Phaser.Scene {
     const position = Phaser.Math.Clamp(x, PADDLE_WIDTH / 2 + 12, WIDTH - PADDLE_WIDTH / 2 - 12);
     this.paddle.setX(position).refreshBody();
     this.shadow.setX(position);
-    if (this.state.status === 'ready') this.balls.positionReady(position, this.arena.paddleY - 17);
+    if (this.state.status === 'ready') {
+      this.balls.positionReady(position, this.arena.paddleY - 17);
+      wakeGameLoop(this.game.loop);
+    }
   }
 
   private start() {
@@ -232,7 +246,9 @@ class BreakoutScene extends Phaser.Scene {
       this.balls.launch(speed);
     }
     this.state.status = 'playing';
+    this.syncPhysicsRate();
     this.physics.resume();
+    wakeGameLoop(this.game.loop);
     this.game.canvas.focus({ preventScroll: true });
     this.publish();
   }
@@ -241,16 +257,19 @@ class BreakoutScene extends Phaser.Scene {
     this.keys.clear();
     this.touchDrag.reset();
     this.balls.setSpeeding(false);
+    this.syncPhysicsRate();
     if (this.state.status !== 'playing') return;
     this.state.status = 'paused';
     this.physics.pause();
     this.publish();
+    this.game.loop.sleep();
   }
 
   private setSpeeding(enabled: boolean) {
     if (enabled && this.state.status !== 'playing') return;
     if (enabled === this.balls.speeding) return;
     this.balls.setSpeeding(enabled);
+    this.syncPhysicsRate();
     this.publish();
   }
 
@@ -275,7 +294,7 @@ class BreakoutScene extends Phaser.Scene {
     brick.setData('hp', hp);
     if (hp <= 0) {
       brick.disableBody(true, true);
-      if (!this.reducedMotion) this.particles.setParticleTint(Number(brick.getData('color'))).explode(10, brick.x, brick.y);
+      if (!this.reducedMotion) this.particles.setParticleTint(Number(brick.getData('color'))).explode(this.performance.burstCount, brick.x, brick.y);
       this.state = destroyBrick(this.state);
       if (brick.getData('buff') === 'frenzy' && this.state.status === 'playing') {
         const drop = this.powerups.create(brick.x, brick.y, 'frenzy-drop') as Phaser.Physics.Arcade.Image;
@@ -312,6 +331,7 @@ class BreakoutScene extends Phaser.Scene {
   private collectPowerup(powerup: Phaser.Physics.Arcade.Image) {
     if (!powerup.active || this.state.status !== 'playing') return;
     if (!this.balls.double(this.arena.height)) return;
+    this.syncPhysicsRate();
     powerup.disableBody(true, true);
     this.playTone('frenzy');
     this.publish();
@@ -332,13 +352,13 @@ class BreakoutScene extends Phaser.Scene {
     if (this.state.status !== 'playing') return;
     this.state.seconds += Math.min(delta, 50) / 1000;
     if (Math.floor(this.state.seconds) !== this.lastSecond) { this.lastSecond = Math.floor(this.state.seconds); this.publish(); }
-    const previousCount = this.balls.active.length;
+    const previousCount = this.balls.count;
     this.balls.update(this.arena.height, this.reducedMotion);
     for (const object of [...this.powerups.getChildren()]) {
       const powerup = object as Phaser.Physics.Arcade.Image;
       if (powerup.y > this.arena.height + 34) powerup.destroy();
     }
-    if (!this.balls.active.length) {
+    if (!this.balls.count) {
       this.state = loseLife(this.state);
       this.resetBall();
       if (this.state.status === 'lost') this.balls.clear();
@@ -346,10 +366,10 @@ class BreakoutScene extends Phaser.Scene {
       this.publish();
       return;
     }
-    if (previousCount !== this.balls.active.length) this.publish();
+    if (previousCount !== this.balls.count) this.publish();
   }
 
-  private publish() { this.options.onState({ ...this.state, seconds: Math.floor(this.state.seconds), ballCount: this.balls.active.length, frenzy: this.balls.multiplier > 1, speeding: this.balls.speeding }); }
+  private publish() { this.options.onState({ ...this.state, seconds: Math.floor(this.state.seconds), ballCount: this.balls.count, frenzy: this.balls.multiplier > 1, speeding: this.balls.speeding }); }
 
   private unlockAudio() {
     if (!this.soundEnabled) return;
@@ -381,12 +401,22 @@ class BreakoutScene extends Phaser.Scene {
 export function createGame(parent: HTMLElement, options: Options) {
   const bounds = parent.getBoundingClientRect();
   const layout = arenaLayout(bounds.width, bounds.height);
-  return new Phaser.Game({
+  const performance = performanceProfile(navigator.maxTouchPoints > 0 || window.matchMedia('(pointer: coarse)').matches);
+  const game = new Phaser.Game({
     type: Phaser.AUTO, parent, width: WIDTH, height: layout.height, backgroundColor: '#20372c',
     banner: false, audio: { noAudio: true },
+    fps: { target: performance.renderFps, limit: performance.renderFps, smoothStep: false },
+    render: { powerPreference: 'low-power', antialiasGL: false },
     input: { activePointers: 2, touch: { capture: true } },
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
-    physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, fps: 120, fixedStep: true } },
-    scene: new BreakoutScene(options, parent),
+    physics: { default: 'arcade', arcade: { gravity: { x: 0, y: 0 }, fps: 60, fixedStep: true, useTree: false } },
+    scene: new BreakoutScene(options, parent, performance),
   });
+  return {
+    destroy(removeCanvas: boolean) {
+      game.destroy(removeCanvas);
+      // Phaser processes destruction on its next frame, including when the game was idle.
+      wakeGameLoop(game.loop);
+    },
+  };
 }

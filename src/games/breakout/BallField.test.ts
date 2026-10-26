@@ -4,7 +4,7 @@ import { BallField } from './BallField';
 import { initialState, loseLife } from './model';
 
 // Exercise ball lifecycle against a lightweight scene adapter; Phaser owns collision detection.
-function fieldFixture() {
+function fieldFixture(trailLength = 8) {
   const children: FakeBall[] = [];
   class FakeBall {
     active = true;
@@ -22,13 +22,26 @@ function fieldFixture() {
   const graphics = { clear() {}, fillStyle() { return this; }, fillCircle() { return this; } };
   const scene = {
     add: { graphics: () => graphics },
-    physics: { add: { group: () => ({ getChildren: () => children, clear: () => { children.length = 0; },
+    physics: { add: { group: () => ({ getChildren: () => children, countActive: () => children.filter(ball => ball.active).length, clear: () => { children.length = 0; },
       create: (x: number, y: number) => { const ball = new FakeBall(x, y); children.push(ball); return ball; } }) } },
   } as unknown as Phaser.Scene;
-  return new BallField(scene);
+  return new BallField(scene, trailLength);
 }
 
 describe('multi-ball lifecycle', () => {
+  it('keeps ball movement, boosting and loss detection when mobile trails are disabled', () => {
+    const field = fieldFixture(0);
+    field.reset(360, 580);
+    field.launch(400);
+    field.double(660);
+    field.setSpeeding(true);
+    field.update(660, false);
+    expect(field.count).toBe(2);
+    expect(field.speedMultiplier).toBe(4);
+    for (const ball of field.active) ball.y = 700;
+    field.update(660, false);
+    expect(field.count).toBe(0);
+  });
   it('temporarily doubles speed without stacking repeated presses, and restores the current direction', () => {
     const field = fieldFixture();
     field.reset(360, 580);

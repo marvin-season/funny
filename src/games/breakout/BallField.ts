@@ -9,12 +9,14 @@ export class BallField {
   private trail: Phaser.GameObjects.Graphics;
   private points = new Map<Phaser.Physics.Arcade.Image, { x: number; y: number }[]>();
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, private trailLength = 8) {
     this.trail = scene.add.graphics();
     this.group = scene.physics.add.group({ allowGravity: false });
   }
 
   get active() { return this.group.getChildren().filter(ball => ball.active) as Phaser.Physics.Arcade.Image[]; }
+  get count() { return this.group.countActive(true); }
+  get speedMultiplier() { return this.multiplier * (this.speeding ? 2 : 1); }
 
   setSpeeding(enabled: boolean) {
     if (enabled === this.speeding) return;
@@ -30,7 +32,7 @@ export class BallField {
     const ball = this.group.create(x, y, 'ball') as Phaser.Physics.Arcade.Image;
     ball.setCircle(BALL_RADIUS).setBounce(1).setCollideWorldBounds(true);
     if (this.multiplier > 1) ball.setTint(0xffca78);
-    this.points.set(ball, []);
+    if (this.trailLength) this.points.set(ball, []);
     return ball;
   }
 
@@ -78,7 +80,7 @@ export class BallField {
 
   bounceOnPaddle(ball: Phaser.Physics.Arcade.Image, offset: number) {
     const body = ball.body as Phaser.Physics.Arcade.Body;
-    const velocity = boostedPaddleVelocity(offset, body.velocity.length(), this.multiplier * (this.speeding ? 2 : 1));
+    const velocity = boostedPaddleVelocity(offset, body.velocity.length(), this.speedMultiplier);
     ball.setVelocity(velocity.x, velocity.y);
   }
 
@@ -88,7 +90,7 @@ export class BallField {
       const { x: vx, y: vy } = body.velocity;
       body.reset(ball.x, mapY(ball.y));
       ball.setVelocity(vx, vy);
-      this.points.set(ball, []);
+      if (this.trailLength) this.points.set(ball, []);
     }
     this.trail.clear();
   }
@@ -107,11 +109,11 @@ export class BallField {
         const y = (velocity.y < 0 ? -1 : 1) * speed * 0.22;
         ball.setVelocity(Math.sign(velocity.x || 1) * Math.sqrt(speed ** 2 - y ** 2), y);
       }
-      if (!reducedMotion) {
+      if (!reducedMotion && this.trailLength) {
         const points = this.points.get(ball)!;
         points.unshift({ x: ball.x, y: ball.y });
-        points.length = Math.min(12, points.length);
-        points.forEach((point, index) => this.trail.fillStyle(this.multiplier > 1 ? 0xffca78 : 0xe1f3ac, (1 - index / 12) * 0.2).fillCircle(point.x, point.y, BALL_RADIUS * (1 - index / 14)));
+        points.length = Math.min(this.trailLength, points.length);
+        points.forEach((point, index) => this.trail.fillStyle(this.multiplier > 1 ? 0xffca78 : 0xe1f3ac, (1 - index / this.trailLength) * 0.2).fillCircle(point.x, point.y, BALL_RADIUS * (1 - index / (this.trailLength + 2))));
       }
     }
   }
